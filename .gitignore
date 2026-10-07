@@ -1,0 +1,25 @@
+# Środowisko wirtualne
+venv/
+env/
+.env
+
+# Pliki tymczasowe i dane aplikacji
+temp_audio/
+*.wav
+*.mp3
+*.m4a
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pliki systemowe i IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Modele ML
+*.bin
+*.pt
+*.safetensors
