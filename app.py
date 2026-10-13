@@ -3,6 +3,7 @@ from audio_processing import normalize_audio
 from transcription import load_whisper_model, transcribe_audio
 from diarization import load_diarization_model, diarize_audio
 from visualization import plot_diarization_waveform
+from synchronization import merge_transcription_and_diarization
 
 def main():
     st.set_page_config(page_title="Audio AI Pipeline", layout="wide")
@@ -54,6 +55,17 @@ def main():
                 st.markdown("### Rozpoznani Mówcy (Czas)")
                 for res in st.session_state.diarization_results:
                     st.markdown(f"**[{res['start_str']} - {res['end_str']}]** {res['speaker']}")
+        st.divider()
+        if st.session_state.transcription_results and st.session_state.diarization_results:
+            st.markdown("## Połączony Scenariusz Spotkania")
+            
+            combined_script = merge_transcription_and_diarization(
+                st.session_state.transcription_results, 
+                st.session_state.diarization_results
+            )
+            
+            for line in combined_script:
+                st.markdown(f"**[{line['start_str']} - {line['end_str']}] {line['speaker']}:** {line['text']}")
 
 if __name__ == "__main__":
     main()
