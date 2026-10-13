@@ -5,7 +5,6 @@ from pyannote.audio import Pipeline
 import soundfile as sf
 import torch
 
-# Wczytanie zmiennych z pliku .env
 load_dotenv()
 
 def format_time(seconds):
@@ -33,19 +32,15 @@ def diarize_audio(audio_path, pipeline):
     """
     Analizuje plik audio i zwraca listę kto i kiedy mówił.
     """
-    # 1. Całkowite ominięcie torchaudio. Odczytujemy plik czystym soundfile.
     data, sample_rate = sf.read(audio_path, dtype='float32')
     
-    # 2. Przekształcenie danych na format, którego oczekuje model (channels, frames)
     if data.ndim == 1:
-        data = data.reshape(1, -1) # Dla plików mono (1 kanał)
+        data = data.reshape(1, -1) 
     else:
-        data = data.T # Dla plików stereo
+        data = data.T 
         
-    # 3. Zamiana tablicy numpy na tensor PyTorch
     waveform = torch.from_numpy(data)
     
-    # 4. Przekazanie gotowego tensora do modelu
     diarization = pipeline({
         "uri": "processed_audio", 
         "waveform": waveform, 
