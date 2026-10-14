@@ -9,11 +9,17 @@ def format_time(seconds):
 @st.cache_resource
 def load_whisper_model():
     """Ładuje model Whisper z cache Streamlita."""
-    return WhisperModel("small", device="cpu", compute_type="int8")
+    return WhisperModel("medium", device="cpu", compute_type="int8")
 
 def transcribe_audio(audio_path, model):
     """Wykonuje transkrypcję z polskim językiem i zwraca listę segmentów."""
-    segments, _ = model.transcribe(audio_path, beam_size=5, language="pl")
+    segments, _ = model.transcribe(
+        audio_path, 
+        beam_size=5, 
+        language="pl",
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500)
+    )
     
     transcription_data = []
     for segment in segments:

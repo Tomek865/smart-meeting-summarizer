@@ -28,25 +28,30 @@ def load_diarization_model():
     )
     return pipeline
 
-def diarize_audio(audio_path, pipeline):
+def diarize_audio(audio_path, pipeline, num_speakers=None, min_speakers=1, max_speakers=5):
     """
     Analizuje plik audio i zwraca listę kto i kiedy mówił.
     """
     data, sample_rate = sf.read(audio_path, dtype='float32')
     
     if data.ndim == 1:
-        data = data.reshape(1, -1) 
+        data = data.reshape(1, -1)
     else:
         data = data.T 
         
     waveform = torch.from_numpy(data)
     
-    diarization = pipeline({
+    diarization_kwargs = {
         "uri": "processed_audio", 
         "waveform": waveform, 
         "sample_rate": sample_rate
-    })
+    }
     
+    if num_speakers is not None:
+        diarization = pipeline(diarization_kwargs, num_speakers=num_speakers)
+    else:
+        diarization = pipeline(diarization_kwargs, min_speakers=min_speakers, max_speakers=max_speakers)
+        
     diarization_data = []
     for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
         diarization_data.append({
@@ -56,5 +61,4 @@ def diarize_audio(audio_path, pipeline):
             "start_str": format_time(turn.start),
             "end_str": format_time(turn.end)
         })
-        
-    return diarization_data
+    
