@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from audio_processing import prepare_dual_audio
 from transcription import load_whisper_model
@@ -5,21 +6,23 @@ from diarization import load_diarization_model, diarize_audio
 from visualization import plot_diarization_waveform
 from synchronization import build_synchronized_transcript
 from summarization import generate_summary
+from export_utils import generate_txt_report, generate_pdf_report
 
 def main():
     st.set_page_config(page_title="Audio AI Pipeline", layout="wide")
     st.title("System Transkrypcji i Diaryzacji")
 
-    if 'last_file_id' not in st.session_state:
-        st.session_state.last_file_id = None
-    if 'diar_path' not in st.session_state:
-        st.session_state.diar_path = None
-    if 'trans_path' not in st.session_state:
-        st.session_state.trans_path = None
-    if 'diarization_results' not in st.session_state:
-        st.session_state.diarization_results = None
-    if 'combined_script' not in st.session_state:
-        st.session_state.combined_script = None
+    default_states = {
+        'last_file_id': None,
+        'diar_path': None,
+        'trans_path': None,
+        'diarization_results': None,
+        'combined_script': None,
+        'summary_text': None
+    }
+    for key, val in default_states.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
 
     whisper_model = load_whisper_model()
     diarization_pipeline = load_diarization_model()
@@ -39,6 +42,7 @@ def main():
                 st.session_state.last_file_id = current_file_id
                 st.session_state.diarization_results = None
                 st.session_state.combined_script = None
+                st.session_state.summary_text = None
                 
         if st.session_state.trans_path:
             st.audio(st.session_state.trans_path)
@@ -94,18 +98,86 @@ def main():
         st.divider()
         if st.session_state.combined_script:
             
-            st.markdown("## Połączony Scenariusz Spotkania")
+            unique_speakers = sorted(list(set(item["speaker"] for item in st.session_state.combined_script)))
+            speaker_names = {}
+            with st.expander("👤 Personalizacja mówców (opcjonalnie nazwij rozmówców)", expanded=False):
+                cols = st.columns(len(unique_speakers) if unique_speakers else 1)
+                for idx, spk in enumerate(unique_speakers):
+                    with cols[idx % len(cols)]:
+                        speaker_names[spk] = st.text_input(f"Nazwa dla {spk}:", value=spk, key=f"rename_{spk}")
+            
+            st.markdown("## 📝 Połączony Scenariusz Spotkania")
             with st.expander("Rozwiń pełny dialog ze spotkania", expanded=False):
                 for line in st.session_state.combined_script:
-                    st.markdown(f"**[{line['start_str']} - {line['end_str']}] {line['speaker']}:** {line['text']}")
+                    disp_spk = speaker_names.get(line['speaker'], line['speaker'])
+                    st.markdown(f"**[{line['start_str']} - {line['end_str']}] {disp_spk}:** {line['text']}")
             
-            st.markdown("## Inteligentne Podsumowanie (LLM)")
+            st.markdown("## 🧠 Inteligentne Podsumowanie (LLM)")
             if st.button("Wygeneruj notatkę ze spotkania", type="primary"):
                 with st.spinner("Model czyta transkrypt i tworzy podsumowanie..."):
-                    summary = generate_summary(st.session_state.combined_script)
-                    if summary:
-                        st.success("Gotowe!")
-                        st.info(summary)
+                    st.session_state["summary_text"] = generate_summary(st.session_state.combined_script)
+            
+            current_summary = st.session_state.get("summary_text")
+            if current_summary:
+                st.success("Podsumowanie gotowe!")
+                st.info(current_summary)
+
+            st.divider()
+            st.markdown("## 📥 Eksport wyników (PDF / TXT)")
+            
+            col_opt1, col_opt2 = st.columns([2, 1])
+            with col_opt1:
+                export_mode = st.radio(
+                    "Wybierz co chcesz wyeksportować:",
+                    options=[
+                        "Pełny raport (Podsumowanie + Transkrypcja)",
+                        "Tylko podsumowanie",
+                        "Tylko transkrypcja"
+                    ],
+                    index=0
+                )
+            with col_opt2:
+                include_timestamps = st.checkbox("Dołącz czasy [MM:SS] w transkrypcji", value=True)
+
+            if export_mode in ["Tylko podsumowanie", "Pełny raport (Podsumowanie + Transkrypcja)"] and not current_summary:
+                st.warning("💡 Wybrałeś opcję z podsumowaniem, ale jeszcze go nie wygenerowałeś powyżej. Kliknij 'Wygeneruj notatkę ze spotkania' lub wybierz 'Tylko transkrypcja'.")
+
+            base_filename = os.path.splitext(uploaded_file.name)[0]
+            
+            txt_data = generate_txt_report(
+                transcript=st.session_state.combined_script,
+                summary=current_summary,
+                export_mode=export_mode,
+                include_timestamps=include_timestamps,
+                speaker_names=speaker_names
+            )
+            
+            pdf_data = generate_pdf_report(
+                transcript=st.session_state.combined_script,
+                summary=current_summary,
+                export_mode=export_mode,
+                include_timestamps=include_timestamps,
+                speaker_names=speaker_names
+            )
+
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="📄 Pobierz jako plik TXT",
+                    data=txt_data.encode("utf-8"),
+                    file_name=f"raport_{base_filename}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+            with col_dl2:
+                st.download_button(
+                    label="📕 Pobierz jako plik PDF",
+                    data=pdf_data,
+                    file_name=f"raport_{base_filename}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
 
 if __name__ == "__main__":
     main()
