@@ -1,35 +1,63 @@
 import os
-from pydub import AudioSegment
 import soundfile as sf
 import noisereduce as nr
+from pydub import AudioSegment
+from pydub.effects import normalize, compress_dynamic_range
+from scipy.signal import butter, lfilter
 
 TEMP_DIR = "temp_audio"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-def normalize_audio(uploaded_file):
+def bandpass_filter(data, lowcut, highcut, fs, order=5):
+    b, a = butter(order, [lowcut, highcut], btype='band', fs=fs)
+    y = lfilter(b, a, data)
+    return y
+
+def prepare_dual_audio(uploaded_file):
     """
-    Zapisuje wgrany plik, konwertuje go do formatu WAV, 16kHz, Mono
-    oraz nakłada zaawansowany algorytm redukcji szumów.
+    Tworzy dwie wersje pliku zoptymalizowane pod różne zadania:
+    - Tor 1 (Diaryzacja): naturalny głos z łagodnym odszumianiem (nie gubi krótkich słów).
+    - Tor 2 (Transkrypcja): kompresja dynamiki AGC + filtr pasmowy dla Whispera.
     """
     input_path = os.path.join(TEMP_DIR, uploaded_file.name)
-    output_path = os.path.join(TEMP_DIR, "processed_audio.wav")
+    diarization_path = os.path.join(TEMP_DIR, "for_diarization.wav")
+    transcription_path = os.path.join(TEMP_DIR, "for_transcription.wav")
     
     with open(input_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
         
-    audio = AudioSegment.from_file(input_path)
-    audio = audio.set_channels(1).set_frame_rate(16000)
+    audio = AudioSegment.from_file(input_path).set_channels(1).set_frame_rate(16000)
     
-    temp_wav_path = os.path.join(TEMP_DIR, "temp_for_nr.wav")
-    audio.export(temp_wav_path, format="wav")
+    audio_diar = normalize(audio)
+    temp_diar = os.path.join(TEMP_DIR, "temp_diar.wav")
+    audio_diar.export(temp_diar, format="wav")
     
-    data, rate = sf.read(temp_wav_path)
+    data_d, rate_d = sf.read(temp_diar)
+    reduced_d = nr.reduce_noise(y=data_d, sr=rate_d, prop_decrease=0.6)
+    sf.write(diarization_path, reduced_d, rate_d)
     
-    reduced_noise = nr.reduce_noise(y=data, sr=rate, prop_decrease=0.8)
+    if os.path.exists(temp_diar):
+        os.remove(temp_diar)
     
-    sf.write(output_path, reduced_noise, rate)
+    audio_trans = compress_dynamic_range(audio)
+    audio_trans = normalize(audio_trans)
     
-    if os.path.exists(temp_wav_path):
-        os.remove(temp_wav_path)
+    temp_trans = os.path.join(TEMP_DIR, "temp_dsp.wav")
+    audio_trans.export(temp_trans, format="wav")
+    
+    data_t, rate_t = sf.read(temp_trans)
+    lowcut_t = 80.0
+    highcut_t = min(7500.0, (rate_t / 2.0) - 100.0)
+    
+    if highcut_t > lowcut_t:
+        filtered_trans = bandpass_filter(data_t, lowcut_t, highcut_t, rate_t)
+    else:
+        filtered_trans = data_t
         
-    return output_path
+    reduced_t = nr.reduce_noise(y=filtered_trans, sr=rate_t, prop_decrease=0.8)
+    sf.write(transcription_path, reduced_t, rate_t)
+    
+    if os.path.exists(temp_trans):
+        os.remove(temp_trans)
+        
+    return diarization_path, transcription_path

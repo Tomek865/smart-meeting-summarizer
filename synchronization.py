@@ -1,45 +1,48 @@
-def merge_transcription_and_diarization(transcription_data, diarization_data):
+import os
+from pydub import AudioSegment
+import streamlit as st
+from transcription import transcribe_chunk
+
+def build_synchronized_transcript(audio_path, diarization_data, whisper_model, custom_vocabulary=""):
     """
-    Łączy segmenty tekstu z odpowiadającymi im mówcami na podstawie 
-    największego pokrycia w czasie (overlap).
+    Zarządza osią czasu: tnie audio na podstawie diaryzacji, 
+    zleca transkrypcję i łączy wyniki w spójny dialog.
     """
-    combined_results = []
+    audio = AudioSegment.from_file(audio_path)
+    combined_script = []
     
-    for t_seg in transcription_data:
-        t_start = t_seg['start']
-        t_end = t_seg['end']
+    sorted_diarization = sorted(diarization_data, key=lambda x: x['start'])
+    total_segments = len(sorted_diarization)
+    
+    progress_bar = st.progress(0, text="Synchronizacja: transkrybowanie wypowiedzi krok po kroku...")
+
+    for i, segment in enumerate(sorted_diarization):
+        start_ms = int(segment['start'] * 1000)
+        end_ms = int(segment['end'] * 1000)
         
-        speaker_overlaps = {}
+        chunk = audio[start_ms:end_ms]
+        chunk_path = f"temp_chunk_{i}.wav"
+        chunk.export(chunk_path, format="wav")
         
-        for d_seg in diarization_data:
-            d_start = d_seg['start']
-            d_end = d_seg['end']
-            
-            overlap_start = max(t_start, d_start)
-            overlap_end = min(t_end, d_end)
-            
-            overlap_duration = max(0, overlap_end - overlap_start)
-            
-            if overlap_duration > 0:
-                speaker = d_seg['speaker']
-                if speaker not in speaker_overlaps:
-                    speaker_overlaps[speaker] = 0
-                speaker_overlaps[speaker] += overlap_duration
+        chunk_text = transcribe_chunk(chunk_path, whisper_model, custom_vocabulary)
         
-        if speaker_overlaps:
-            best_speaker = max(speaker_overlaps, key=speaker_overlaps.get)
-        else:
-            best_speaker = "NIEZNANY"
+        if chunk_text:
+            combined_script.append({
+                "start_str": segment['start_str'],
+                "end_str": segment['end_str'],
+                "speaker": segment['speaker'],
+                "text": chunk_text
+            })
             
-        combined_results.append({
-            "start_str": t_seg['start_str'],
-            "end_str": t_seg['end_str'],
-            "speaker": best_speaker,
-            "text": t_seg['text']
-        })
+        if os.path.exists(chunk_path):
+            os.remove(chunk_path)
+            
+        progress_bar.progress((i + 1) / total_segments, text=f"Zsynchronizowano {i+1}/{total_segments} fragmentów")
         
+    progress_bar.empty()
+    
     merged_script = []
-    for current in combined_results:
+    for current in combined_script:
         if not merged_script:
             merged_script.append(current)
             continue
@@ -50,5 +53,5 @@ def merge_transcription_and_diarization(transcription_data, diarization_data):
             previous['text'] += " " + current['text']
         else:
             merged_script.append(current)
-            
+
     return merged_script

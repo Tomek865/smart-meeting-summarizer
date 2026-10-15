@@ -1,45 +1,35 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import soundfile as sf
-import streamlit as st
+import numpy as np
 
 def plot_diarization_waveform(audio_path, diarization_results):
-    """
-    Rysuje falę dźwiękową i nakłada na nią kolorowe bloki oznaczające mówców.
-    """
-    data, sample_rate = sf.read(audio_path, dtype='float32')
-    
+    data, rate = sf.read(audio_path)
     if data.ndim > 1:
-        data = data.mean(axis=1)
-        
-    duration = len(data) / sample_rate
-    time_axis = np.linspace(0, duration, len(data))
-
-    fig, ax = plt.subplots(figsize=(10, 3))
+        data = data[:, 0]
     
-    ax.plot(time_axis, data, color='gray', alpha=0.5, linewidth=0.5)
-
-    colors = {
-        'SPEAKER_00': 'blue', 
-        'SPEAKER_01': 'orange', 
-        'SPEAKER_02': 'green',
-        'SPEAKER_03': 'purple'
-    }
-
+    times = np.arange(len(data)) / float(rate)
+    
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(times, data, color='gray', alpha=0.5)
+    
+    color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    speaker_colors = {}
+    
     for res in diarization_results:
-        speaker = res['speaker']
-        color = colors.get(speaker, 'red')
+        spk = res['speaker']
+        if spk not in speaker_colors:
+            speaker_colors[spk] = color_palette[len(speaker_colors) % len(color_palette)]
         
-        ax.axvspan(res['start'], res['end'], color=color, alpha=0.3, label=speaker)
-
+        ax.axvspan(res['start'], res['end'], color=speaker_colors[spk], alpha=0.4, 
+                   label=spk if spk not in ax.get_legend_handles_labels()[1] else "")
+    
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), loc='upper right')
-
-    ax.set_xlabel("Czas [s]")
-    ax.set_ylabel("Amplituda")
-    ax.set_title("Wizualizacja podziału audio na mówców")
     
+    ax.set_xlabel('Czas [s]')
+    ax.set_ylabel('Amplituda')
+    ax.set_title('Wizualizacja podziału audio na mówców')
     plt.tight_layout()
     
     return fig
