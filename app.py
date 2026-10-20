@@ -3,7 +3,7 @@ import streamlit as st
 from audio_processing import prepare_dual_audio
 from transcription import load_whisper_model
 from diarization import load_diarization_model, diarize_audio
-from visualization import plot_diarization_waveform
+from visualization import plot_diarization_waveform, plot_speaker_share_pie_chart
 from synchronization import build_synchronized_transcript
 from summarization import generate_summary
 from export_utils import generate_txt_report, generate_pdf_report
@@ -72,9 +72,18 @@ def main():
                     st.success("Diaryzacja zakończona pomyślnie!")
                     
         if st.session_state.diarization_results:
-            with st.expander("Pokaż podział na mówców i wykres (PyAnnote)", expanded=True):
-                fig = plot_diarization_waveform(st.session_state.diar_path, st.session_state.diarization_results)
-                st.pyplot(fig)
+            with st.expander("📊 Analityka Mówców i Wykresy (PyAnnote)", expanded=True):
+                col_chart1, col_chart2 = st.columns([2, 1])
+                
+                with col_chart1:
+                    fig_wave = plot_diarization_waveform(st.session_state.diar_path, st.session_state.diarization_results)
+                    st.pyplot(fig_wave)
+                    
+                with col_chart2:
+                    fig_pie = plot_speaker_share_pie_chart(st.session_state.diarization_results)
+                    st.pyplot(fig_pie)
+                    
+                st.markdown("#### Chronologiczny podział na mówców:")
                 for res in st.session_state.diarization_results:
                     st.markdown(f"**[{res['start_str']} - {res['end_str']}]** {res['speaker']}")
 
@@ -100,22 +109,48 @@ def main():
             
             unique_speakers = sorted(list(set(item["speaker"] for item in st.session_state.combined_script)))
             speaker_names = {}
-            with st.expander("👤 Personalizacja mówców (opcjonalnie nazwij rozmówców)", expanded=False):
+            with st.expander(" Personalizacja mówców (opcjonalnie nazwij rozmówców)", expanded=False):
                 cols = st.columns(len(unique_speakers) if unique_speakers else 1)
                 for idx, spk in enumerate(unique_speakers):
                     with cols[idx % len(cols)]:
                         speaker_names[spk] = st.text_input(f"Nazwa dla {spk}:", value=spk, key=f"rename_{spk}")
             
-            st.markdown("## 📝 Połączony Scenariusz Spotkania")
+            st.markdown("## Połączony Scenariusz Spotkania")
             with st.expander("Rozwiń pełny dialog ze spotkania", expanded=False):
                 for line in st.session_state.combined_script:
                     disp_spk = speaker_names.get(line['speaker'], line['speaker'])
                     st.markdown(f"**[{line['start_str']} - {line['end_str']}] {disp_spk}:** {line['text']}")
             
-            st.markdown("## 🧠 Inteligentne Podsumowanie (LLM)")
+            st.markdown("## Inteligentne Podsumowanie (LLM)")
+            
+            col_llm1, col_llm2, col_llm3 = st.columns([1, 1, 2])
+            with col_llm1:
+                summary_style = st.selectbox(
+                    "Wybierz styl podsumowania:",
+                    options=["Biznesowy", "Naukowy / Akademicki", "Luźna notatka (Casual)"],
+                    index=0
+                )
+            with col_llm2:
+                summary_language = st.selectbox(
+                    "Język notatki:",
+                    options=["Polski", "Angielski"],
+                    index=0
+                )
+            with col_llm3:
+                custom_instructions = st.text_area(
+                    "Dodatkowe instrukcje (opcjonalnie):",
+                    placeholder="np. Skup się tylko na wypowiedziach Jana. Wypunktuj wszystkie wzmianki o budżecie projektu."
+                )
+
             if st.button("Wygeneruj notatkę ze spotkania", type="primary"):
-                with st.spinner("Model czyta transkrypt i tworzy podsumowanie..."):
-                    st.session_state["summary_text"] = generate_summary(st.session_state.combined_script)
+                with st.spinner(f"Model ({summary_style}, {summary_language}) czyta transkrypt i tworzy podsumowanie..."):
+                    st.session_state["summary_text"] = generate_summary(
+                        st.session_state.combined_script,
+                        summary_style=summary_style,
+                        custom_instructions=custom_instructions,
+                        language=summary_language
+                    )
+            
             
             current_summary = st.session_state.get("summary_text")
             if current_summary:
@@ -123,7 +158,7 @@ def main():
                 st.info(current_summary)
 
             st.divider()
-            st.markdown("## 📥 Eksport wyników (PDF / TXT)")
+            st.markdown("## Eksport wyników (PDF / TXT)")
             
             col_opt1, col_opt2 = st.columns([2, 1])
             with col_opt1:
@@ -140,7 +175,7 @@ def main():
                 include_timestamps = st.checkbox("Dołącz czasy [MM:SS] w transkrypcji", value=True)
 
             if export_mode in ["Tylko podsumowanie", "Pełny raport (Podsumowanie + Transkrypcja)"] and not current_summary:
-                st.warning("💡 Wybrałeś opcję z podsumowaniem, ale jeszcze go nie wygenerowałeś powyżej. Kliknij 'Wygeneruj notatkę ze spotkania' lub wybierz 'Tylko transkrypcja'.")
+                st.warning("Wybrałeś opcję z podsumowaniem, ale jeszcze go nie wygenerowałeś powyżej. Kliknij 'Wygeneruj notatkę ze spotkania' lub wybierz 'Tylko transkrypcja'.")
 
             base_filename = os.path.splitext(uploaded_file.name)[0]
             
@@ -163,7 +198,7 @@ def main():
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 st.download_button(
-                    label="📄 Pobierz jako plik TXT",
+                    label="Pobierz jako plik TXT",
                     data=txt_data.encode("utf-8"),
                     file_name=f"raport_{base_filename}.txt",
                     mime="text/plain",
@@ -171,7 +206,7 @@ def main():
                 )
             with col_dl2:
                 st.download_button(
-                    label="📕 Pobierz jako plik PDF",
+                    label="Pobierz jako plik PDF",
                     data=pdf_data,
                     file_name=f"raport_{base_filename}.pdf",
                     mime="application/pdf",
