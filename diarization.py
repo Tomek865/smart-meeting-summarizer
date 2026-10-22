@@ -4,6 +4,7 @@ import streamlit as st
 import soundfile as sf
 import numpy as np
 import torch
+from pyannote.audio import Pipeline
 
 load_dotenv()
 

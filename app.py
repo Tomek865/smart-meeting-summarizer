@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 from audio_processing import prepare_dual_audio
 from transcription import load_whisper_model
@@ -92,7 +93,12 @@ def main():
                 if st.session_state.last_file_id != current_file_id:
                     st.session_state.raw_audio_bytes = uploaded_file.getvalue()
                     with st.spinner("Optymalizacja dźwięku w tle (Dual-Track Audio DSP)..."):
+                        print("Rozpoczęto przygotowanie audio...")
+                        start_prep = time.time()
                         diar_path, trans_path = prepare_dual_audio(uploaded_file)
+                        prep_time = time.time() - start_prep
+                        print(f"[PROFILOWANIE] Przygotowanie audio zajęło: {prep_time:.2f} sekundy")
+                        
                         st.session_state.diar_path = diar_path
                         st.session_state.trans_path = trans_path
                         st.session_state.last_file_id = current_file_id
@@ -135,10 +141,14 @@ def main():
 
             if run_diar:
                 with st.spinner("Analiza cech biometrycznych głosów..."):
+                    print("Rozpoczęto diaryzację...")
+                    start_diar = time.time()
                     st.session_state.diarization_results = diarize_audio(
                         st.session_state.diar_path, diarization_pipeline, 
                         num_speakers=num_speakers, min_speakers=1, max_speakers=5
                     )
+                    diar_time = time.time() - start_diar
+                    print(f"[PROFILOWANIE] Diaryzacja zajęła: {diar_time:.2f} sekundy")
 
             if st.session_state.diarization_results:
                 st.success("Analiza mówców została zakończona.")
@@ -185,12 +195,16 @@ def main():
 
             if run_trans:
                 with st.spinner("Zamiana mowy na tekst i synchronizacja ze ścieżką mówców..."):
+                    print("Rozpoczęto transkrypcję...")
+                    start_trans = time.time()
                     st.session_state.combined_script = build_synchronized_transcript(
                         st.session_state.trans_path,
                         st.session_state.diarization_results, 
                         whisper_model, 
                         custom_vocabulary=st.session_state.custom_vocab
                     )
+                    trans_time = time.time() - start_trans
+                    print(f"[PROFILOWANIE] Transkrypcja zajęła: {trans_time:.2f} sekundy")
 
             if st.session_state.combined_script:
                 st.success("Transkrypcja i synchronizacja tekstu zakończona.")
@@ -246,12 +260,16 @@ def main():
 
             if run_sum:
                 with st.spinner(f"Generowanie podsumowania ({summary_style}, {summary_language})..."):
+                    print("Rozpoczęto generowanie podsumowania...")
+                    start_sum = time.time()
                     st.session_state["summary_text"] = generate_summary(
                         st.session_state.combined_script,
                         summary_style=summary_style,
                         custom_instructions=custom_instructions,
                         language=summary_language
                     )
+                    sum_time = time.time() - start_sum
+                    print(f"[PROFILOWANIE] Generowanie podsumowania (LLM) zajęło: {sum_time:.2f} sekundy")
             
             current_summary = st.session_state.get("summary_text")
             if current_summary:
