@@ -2,6 +2,7 @@
 venv/
 env/
 .env
+.coverage
 
 # Pliki tymczasowe i dane aplikacji
 temp_audio/
