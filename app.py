@@ -97,7 +97,7 @@ def main():
                         start_prep = time.time()
                         diar_path, trans_path = prepare_dual_audio(uploaded_file)
                         prep_time = time.time() - start_prep
-                        print(f"[PROFILOWANIE] Przygotowanie audio zajęło: {prep_time:.2f} sekundy")
+                        print(f"Przygotowanie audio zajęło: {prep_time:.2f} sekundy")
                         
                         st.session_state.diar_path = diar_path
                         st.session_state.trans_path = trans_path
@@ -148,7 +148,7 @@ def main():
                         num_speakers=num_speakers, min_speakers=1, max_speakers=5
                     )
                     diar_time = time.time() - start_diar
-                    print(f"[PROFILOWANIE] Diaryzacja zajęła: {diar_time:.2f} sekundy")
+                    print(f"Diaryzacja zajęła: {diar_time:.2f} sekundy")
 
             if st.session_state.diarization_results:
                 st.success("Analiza mówców została zakończona.")
@@ -204,7 +204,7 @@ def main():
                         custom_vocabulary=st.session_state.custom_vocab
                     )
                     trans_time = time.time() - start_trans
-                    print(f"[PROFILOWANIE] Transkrypcja zajęła: {trans_time:.2f} sekundy")
+                    print(f"Transkrypcja zajęła: {trans_time:.2f} sekundy")
 
             if st.session_state.combined_script:
                 st.success("Transkrypcja i synchronizacja tekstu zakończona.")
@@ -269,7 +269,7 @@ def main():
                         language=summary_language
                     )
                     sum_time = time.time() - start_sum
-                    print(f"[PROFILOWANIE] Generowanie podsumowania (LLM) zajęło: {sum_time:.2f} sekundy")
+                    print(f"Generowanie podsumowania (LLM) zajęło: {sum_time:.2f} sekundy")
             
             current_summary = st.session_state.get("summary_text")
             if current_summary:
