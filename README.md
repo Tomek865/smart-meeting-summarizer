@@ -1,8 +1,8 @@
-#Meeting Summarizer
+# Meeting Summarizer
 
 Aplikacja internetowa stworzona w ramach projektu inżynierskiego. Służy do automatycznej transkrypcji spotkań, rozpoznawania mówców (diaryzacji) oraz generowania inteligentnych podsumowań i notatek z wykorzystaniem dużych modeli językowych (LLM).
 
-#Główne funkcje
+# Główne funkcje
 
 Dual-Track Audio DSP: Wstępne przetwarzanie i optymalizacja dźwięku.
 
@@ -14,7 +14,7 @@ Generowanie podsumowań AI: Automatyczne tworzenie ustrukturyzowanych notatek w 
 
 Eksport raportów: Pobieranie gotowej dokumentacji ze spotkania w formacie PDF oraz TXT.
 
-#Wykorzystane technologie
+# Wykorzystane technologie
 
 Język: Python 3.11
 
@@ -28,7 +28,7 @@ Optymalizacja wydajności: ONNX Runtime, kwantyzacja int8
 
 Testowanie: pytest, unittest.mock, jiwer (WER), pyannote.metrics (DER)
 
-#Wymagania wstępne
+# Wymagania wstępne
 
 Zainstalowany Python 3.11.x.
 
@@ -40,7 +40,7 @@ HuggingFace (dla modelu PyAnnote)
 
 Groq Cloud (dla modelu językowego)
 
-⚙️ Instalacja i konfiguracja
+# Instalacja i konfiguracja
 
 Klonowanie repozytorium:
 
@@ -57,19 +57,19 @@ Na systemie Linux/Mac:
 source venv/bin/activate
 
 
-#Instalacja zależności:
+# Instalacja zależności:
 
 pip install -r requirements.txt
 
 
-#Konfiguracja zmiennych środowiskowych:
+# Konfiguracja zmiennych środowiskowych:
 Utwórz plik .env w głównym katalogu projektu i dodaj swoje klucze API (lub umieść je bezpiecznie w kodzie/Streamlit secrets, zgodnie z implementacją):
 
 HUGGINGFACE_TOKEN=twoj_token_hf
 GROQ_API_KEY=twoj_klucz_groq
 
 
-#Uruchomienie aplikacji
+# Uruchomienie aplikacji
 
 Aby uruchomić aplikację w przeglądarce, wpisz w terminalu z aktywnym środowiskiem:
 
