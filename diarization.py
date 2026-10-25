@@ -7,6 +7,7 @@ import torch
 from pyannote.audio import Pipeline
 
 load_dotenv()
+torch.set_num_threads(6)
 
 def format_time(seconds):
     """Pomocnicza funkcja do formatowania czasu w sekundach na MM:SS"""
@@ -16,7 +17,7 @@ def format_time(seconds):
 @st.cache_resource
 def load_diarization_model():
     """
-    Ładuje pipeline pyannote.audio przy użyciu tokenu z .env.
+    Ładuje pipeline pyannote.audio i zmniejsza gęstość próbkowania okien (szybszy ResNet na CPU).
     """
     hf_token = os.getenv("HF_TOKEN")
     if not hf_token:
@@ -27,12 +28,18 @@ def load_diarization_model():
         "pyannote/speaker-diarization-3.1",
         token=hf_token
     )
-    return pipeline
+    pipeline.to(torch.device("cpu"))
+    
+    try:
+        pipeline.segmentation_step = 0.35
+        pipeline.segmentation_batch_size = 32
+        pipeline.embedding_batch_size = 32
+        
+        if hasattr(pipeline, "_segmentation"):
+            pipeline._segmentation.step = pipeline._segmentation.duration * 0.35
+    except Exception as e:
+        print(f"Informacja: Nie zmieniono parametrów step/batch: {e}")
 
-def diarize_audio(audio_path, pipeline, num_speakers=None, min_speakers=1, max_speakers=5):
-    """
-    Analizuje plik audio, wykrywa mówców i domyka pominięte przez AI krótkie słowa na podstawie energii fali.
-    """
     try:
         hparams = pipeline.parameters(instantiated=True)
         if "clustering" in hparams:
@@ -45,6 +52,12 @@ def diarize_audio(audio_path, pipeline, num_speakers=None, min_speakers=1, max_s
     except Exception as e:
         print(f"Informacja: Nie nadpisano hiperparametrów: {e}")
 
+    return pipeline
+
+def diarize_audio(audio_path, pipeline, num_speakers=None, min_speakers=1, max_speakers=5):
+    """
+    Analizuje plik audio, wykrywa mówców i domyka pominięte przez AI krótkie słowa na podstawie energii fali.
+    """
     data, sample_rate = sf.read(audio_path, dtype='float32')
     
     mono_data = data if data.ndim == 1 else data[:, 0]
@@ -57,13 +70,17 @@ def diarize_audio(audio_path, pipeline, num_speakers=None, min_speakers=1, max_s
     waveform = torch.from_numpy(tensor_data)
     audio_file = {"waveform": waveform, "sample_rate": sample_rate}
 
-    if num_speakers is not None:
-        diarization = pipeline(audio_file, num_speakers=num_speakers)
-    else:
-        diarization = pipeline(audio_file, min_speakers=min_speakers, max_speakers=max_speakers)
+    # Szybki przebieg w trybie czystej inferencji
+    with torch.inference_mode():
+        if num_speakers is not None:
+            diarization = pipeline(audio_file, num_speakers=num_speakers)
+        else:
+            diarization = pipeline(audio_file, min_speakers=min_speakers, max_speakers=max_speakers)
         
+    annotation = getattr(diarization, "speaker_diarization", diarization)
+    
     raw_data = []
-    for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
+    for turn, _, speaker in annotation.itertracks(yield_label=True):
         raw_data.append({
             "start": turn.start,
             "end": turn.end,
