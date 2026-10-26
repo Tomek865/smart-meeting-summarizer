@@ -14,6 +14,8 @@ def bandpass_filter(data, lowcut, highcut, fs, order=5):
 
 def fast_normalize(data):
     """Błyskawiczna normalizacja na macierzach NumPy."""
+    if len(data) == 0:
+        return data
     max_val = np.max(np.abs(data))
     return data / max_val if max_val > 0 else data
 
@@ -21,6 +23,8 @@ def fast_compress_dynamic_range(data, ratio=2.0):
     """Wektorowa kompresja dynamiki (AGC) w NumPy zamiast powolnego pydub."""
     compressed = np.tanh(data * ratio)
     return fast_normalize(compressed)
+
+compress_dynamic_range = fast_compress_dynamic_range
 
 def prepare_dual_audio(uploaded_file):
     """

@@ -47,6 +47,7 @@ def main():
         'diarization_results': None,
         'combined_script': None,
         'summary_text': None,
+        'summary_language': "Polski",
         'custom_vocab': "",
         'speaker_names': {}
     }
@@ -262,6 +263,7 @@ def main():
                 with st.spinner(f"Generowanie podsumowania ({summary_style}, {summary_language})..."):
                     print("Rozpoczęto generowanie podsumowania...")
                     start_sum = time.time()
+                    st.session_state["summary_language"] = summary_language
                     st.session_state["summary_text"] = generate_summary(
                         st.session_state.combined_script,
                         summary_style=summary_style,
@@ -272,6 +274,8 @@ def main():
                     print(f"Generowanie podsumowania (LLM) zajęło: {sum_time:.2f} sekundy")
             
             current_summary = st.session_state.get("summary_text")
+            active_lang = st.session_state.get("summary_language", summary_language)
+
             if current_summary:
                 st.success("Notatka została wygenerowana i jest gotowa do eksportu.")
                 with st.expander("Pokaż treść wygenerowanej notatki AI", expanded=True):
@@ -296,20 +300,29 @@ def main():
                     
                     txt_data = generate_txt_report(
                         transcript=st.session_state.combined_script,
-                        summary=current_summary, export_mode=export_mode,
-                        include_timestamps=include_timestamps, speaker_names=st.session_state.speaker_names
+                        summary=current_summary, 
+                        export_mode=export_mode,
+                        include_timestamps=include_timestamps, 
+                        speaker_names=st.session_state.speaker_names,
+                        language=active_lang
                     )
                     pdf_data = generate_pdf_report(
                         transcript=st.session_state.combined_script,
-                        summary=current_summary, export_mode=export_mode,
-                        include_timestamps=include_timestamps, speaker_names=st.session_state.speaker_names
+                        summary=current_summary, 
+                        export_mode=export_mode,
+                        include_timestamps=include_timestamps, 
+                        speaker_names=st.session_state.speaker_names,
+                        language=active_lang
                     )
+
+                    is_en = "ang" in str(active_lang).lower() or "en" in str(active_lang).lower()
+                    prefix = "Report" if is_en else "Raport"
 
                     col_dl1, col_dl2 = st.columns(2)
                     with col_dl1:
-                        st.download_button("Pobierz plik TXT", data=txt_data.encode("utf-8"), file_name=f"Raport_{base_filename}.txt", mime="text/plain", type="secondary", use_container_width=True)
+                        st.download_button("Pobierz plik TXT", data=txt_data.encode("utf-8"), file_name=f"{prefix}_{base_filename}.txt", mime="text/plain", type="secondary", use_container_width=True)
                     with col_dl2:
-                        st.download_button("Pobierz plik PDF", data=pdf_data, file_name=f"Raport_{base_filename}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+                        st.download_button("Pobierz plik PDF", data=pdf_data, file_name=f"{prefix}_{base_filename}.pdf", mime="application/pdf", type="primary", use_container_width=True)
 
             col_back, col_space, col_reset = st.columns([1, 2, 1])
             with col_back:
@@ -325,6 +338,7 @@ def main():
                     st.session_state.diarization_results = None
                     st.session_state.combined_script = None
                     st.session_state.summary_text = None
+                    st.session_state.summary_language = "Polski"
                     st.rerun()
 
     st.markdown('<p class="footer-text">© 2026 Projekt Inżynierski</p>', unsafe_allow_html=True)

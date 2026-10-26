@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
@@ -7,6 +8,123 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
+
+
+REPORT_TRANSLATIONS = {
+    "Polski": {
+        "txt_title": "RAPORT ZE SPOTKANIA (AI AUDIO)",
+        "txt_date": "Data wygenerowania",
+        "txt_summary_header": "--- PODSUMOWANIE SPOTKANIA ---",
+        "txt_no_summary": "(Brak wygenerowanego podsumowania)",
+        "txt_transcript_header": "--- TRANSKRYPCJA ROZMOWY ---",
+        "txt_no_transcript": "(Brak transkrypcji)",
+        "pdf_title": "Raport ze Spotkania",
+        "pdf_subtitle": "Wygenerowano",
+        "pdf_summary_header": "Podsumowanie i wnioski (AI)",
+        "pdf_no_summary": "<i>Brak wygenerowanego podsumowania.</i>",
+        "pdf_transcript_header": "Zapis rozmowy (Transkrypcja)",
+        "pdf_no_transcript": "<i>Brak transkrypcji.</i>",
+    },
+    "Angielski": {
+        "txt_title": "MEETING REPORT (AI AUDIO)",
+        "txt_date": "Generated on",
+        "txt_summary_header": "--- MEETING SUMMARY ---",
+        "txt_no_summary": "(No summary generated)",
+        "txt_transcript_header": "--- MEETING TRANSCRIPT ---",
+        "txt_no_transcript": "(No transcript available)",
+        "pdf_title": "Meeting Report",
+        "pdf_subtitle": "Generated on",
+        "pdf_summary_header": "Summary & Key Takeaways (AI)",
+        "pdf_no_summary": "<i>No summary generated.</i>",
+        "pdf_transcript_header": "Meeting Transcript",
+        "pdf_no_transcript": "<i>No transcript available.</i>",
+    }
+}
+
+
+def _get_labels(language: str) -> dict:
+    lang_str = str(language).strip().lower() if language else ""
+    if "ang" in lang_str or "en" in lang_str:
+        return REPORT_TRANSLATIONS["Angielski"]
+    return REPORT_TRANSLATIONS["Polski"]
+
+
+def clean_txt_summary(summary: str) -> str:
+    """
+    Usuwa formatowanie markdown (np. **, __, ###) na potrzeby czystego pliku TXT,
+    aby w punktatorach nie pojawiały się gwiazdki ** przed i po zdaniach.
+    """
+    if not summary:
+        return ""
+    cleaned_lines = []
+    for raw_line in summary.splitlines():
+        line = re.sub(r'^#{1,6}\s*', '', raw_line)
+
+        prefix = ""
+        bullet_match = re.match(r'^([-*•]|\d+\.)\s+(.*)$', line)
+        if bullet_match:
+            b_type, rest = bullet_match.groups()
+            prefix = f"{b_type} "
+            line = rest.strip()
+
+        full_bold_match = re.match(r'^\*\*(.*?)\*\*$', line)
+        if full_bold_match:
+            line = full_bold_match.group(1).strip()
+        else:
+            line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+            line = re.sub(r'__(.*?)__', r'\1', line)
+
+        line = line.replace('**', '').replace('__', '').strip()
+        cleaned_lines.append(f"{prefix}{line}" if prefix else line)
+
+    return "\n".join(cleaned_lines)
+
+
+def format_pdf_line(line: str) -> str:
+    """
+    Formatuje linię podsumowania dla ReportLab:
+    - zamienia markdown ** na tagi <b>...</b>
+    - usuwa zbędne gwiazdki ** otaczające całe punkty/zdania
+    - obsługuje punktatory i nagłówki
+    """
+    clean_line = line.strip()
+    if not clean_line:
+        return ""
+
+    is_heading = False
+    if clean_line.startswith("#"):
+        clean_line = re.sub(r'^#{1,6}\s*', '', clean_line)
+        is_heading = True
+
+    clean_line = clean_line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    prefix = ""
+    bullet_match = re.match(r'^([-*•]|\d+\.)\s+(.*)$', clean_line)
+    if bullet_match:
+        b_type, rest = bullet_match.groups()
+        prefix = "&bull; " if b_type in ['-', '*', '•'] else f"{b_type} "
+        clean_line = rest.strip()
+
+    full_bold_match = re.match(r'^\*\*(.*?)\*\*$', clean_line)
+    if full_bold_match:
+        inner = full_bold_match.group(1).strip()
+        if ":" in inner:
+            parts = inner.split(":", 1)
+            clean_line = f"<b>{parts[0].strip()}:</b> {parts[1].strip()}"
+        else:
+            clean_line = inner
+    else:
+        clean_line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_line)
+        clean_line = re.sub(r'__(.*?)__', r'<b>\1</b>', clean_line)
+
+    clean_line = clean_line.replace('**', '').replace('__', '')
+
+    if prefix:
+        clean_line = prefix + clean_line
+    if is_heading:
+        clean_line = f"<b>{clean_line}</b>"
+
+    return clean_line
 
 
 def _register_polish_font():
@@ -36,29 +154,37 @@ def generate_txt_report(
     summary=None, 
     export_mode="Pełny raport (Podsumowanie + Transkrypcja)", 
     include_timestamps=True,
-    speaker_names=None
+    speaker_names=None,
+    language="Polski"
 ):
     """
-    Generuje zawartość pliku TXT na podstawie wybranych opcji.
+    Generuje zawartość pliku TXT na podstawie wybranych opcji z nagłówkami
+    dopasowanymi do wybranego języka (Polski / Angielski) oraz czystym tekstem bez surowych **.
     """
+    labels = _get_labels(language)
     lines = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
     lines.append("==========================================")
-    lines.append("      RAPORT ZE SPOTKANIA (AI AUDIO)      ")
-    lines.append(f"      Data wygenerowania: {now_str}       ")
+    lines.append(f"      {labels['txt_title']}      ")
+    lines.append(f"      {labels['txt_date']}: {now_str}       ")
     lines.append("==========================================\n")
     
-    if export_mode in ["Tylko podsumowanie", "Pełny raport (Podsumowanie + Transkrypcja)"]:
-        lines.append("--- PODSUMOWANIE SPOTKANIA ---\n")
+    mode_lower = export_mode.lower()
+    has_summary = ("podsumowanie" in mode_lower or "summary" in mode_lower or "pełny" in mode_lower or "full" in mode_lower)
+    has_transcript = ("transkrypcja" in mode_lower or "transcript" in mode_lower or "pełny" in mode_lower or "full" in mode_lower)
+
+    if has_summary:
+        lines.append(f"{labels['txt_summary_header']}\n")
         if summary:
-            lines.append(summary.strip())
+            cleaned_summary = clean_txt_summary(summary)
+            lines.append(cleaned_summary.strip())
         else:
-            lines.append("(Brak wygenerowanego podsumowania)")
+            lines.append(labels['txt_no_summary'])
         lines.append("\n" + "=" * 42 + "\n")
         
-    if export_mode in ["Tylko transkrypcja", "Pełny raport (Podsumowanie + Transkrypcja)"]:
-        lines.append("--- TRANSKRYPCJA ROZMOWY ---\n")
+    if has_transcript:
+        lines.append(f"{labels['txt_transcript_header']}\n")
         if transcript:
             for item in transcript:
                 spk = item["speaker"]
@@ -71,7 +197,7 @@ def generate_txt_report(
                     lines.append(f"{spk}: {item['text']}")
                 lines.append("")
         else:
-            lines.append("(Brak transkrypcji)")
+            lines.append(labels['txt_no_transcript'])
             
     return "\n".join(lines)
 
@@ -81,11 +207,14 @@ def generate_pdf_report(
     summary=None, 
     export_mode="Pełny raport (Podsumowanie + Transkrypcja)", 
     include_timestamps=True,
-    speaker_names=None
+    speaker_names=None,
+    language="Polski"
 ):
     """
-    Generuje bufor bajtów z plikiem PDF (z pełną obsługą polskich znaków).
+    Generuje bufor bajtów z plikiem PDF z nagłówkami w odpowiednim języku (Polski / Angielski)
+    oraz poprawnym formatowaniem punktatorów bez surowych **.
     """
+    labels = _get_labels(language)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -137,23 +266,27 @@ def generate_pdf_report(
     story = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
-    story.append(Paragraph("Raport ze Spotkania", title_style))
-    story.append(Paragraph(f"Wygenerowano: {now_str} | Smart Meeting Summarizer", subtitle_style))
+    story.append(Paragraph(labels['pdf_title'], title_style))
+    story.append(Paragraph(f"{labels['pdf_subtitle']}: {now_str} | Smart Meeting Summarizer", subtitle_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.lightgrey, spaceAfter=15))
     
-    if export_mode in ["Tylko podsumowanie", "Pełny raport (Podsumowanie + Transkrypcja)"]:
-        story.append(Paragraph("Podsumowanie i wnioski (AI)", heading_style))
+    mode_lower = export_mode.lower()
+    has_summary = ("podsumowanie" in mode_lower or "summary" in mode_lower or "pełny" in mode_lower or "full" in mode_lower)
+    has_transcript = ("transkrypcja" in mode_lower or "transcript" in mode_lower or "pełny" in mode_lower or "full" in mode_lower)
+
+    if has_summary:
+        story.append(Paragraph(labels['pdf_summary_header'], heading_style))
         if summary:
-            clean_summary = summary.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            for paragraph in clean_summary.split("\n"):
-                if paragraph.strip():
-                    story.append(Paragraph(paragraph.strip(), body_style))
+            for raw_paragraph in summary.splitlines():
+                formatted_p = format_pdf_line(raw_paragraph)
+                if formatted_p:
+                    story.append(Paragraph(formatted_p, body_style))
         else:
-            story.append(Paragraph("<i>Brak wygenerowanego podsumowania.</i>", body_style))
+            story.append(Paragraph(labels['pdf_no_summary'], body_style))
         story.append(Spacer(1, 15))
         
-    if export_mode in ["Tylko transkrypcja", "Pełny raport (Podsumowanie + Transkrypcja)"]:
-        story.append(Paragraph("Zapis rozmowy (Transkrypcja)", heading_style))
+    if has_transcript:
+        story.append(Paragraph(labels['pdf_transcript_header'], heading_style))
         if transcript:
             for item in transcript:
                 spk = item["speaker"]
@@ -170,7 +303,7 @@ def generate_pdf_report(
                     
                 story.append(Paragraph(line_html, body_style))
         else:
-            story.append(Paragraph("<i>Brak transkrypcji.</i>", body_style))
+            story.append(Paragraph(labels['pdf_no_transcript'], body_style))
             
     doc.build(story)
     buffer.seek(0)
